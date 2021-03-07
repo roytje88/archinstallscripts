@@ -94,7 +94,7 @@ do
         fi
         ;;
     4)
-        username=$(dialog --passwordbox "Enter the desired username for the default user" 10 30 --output-fd 1)
+        username=$(dialog --inputbox "Enter the desired username for the default user" 10 30 --output-fd 1)
         if [ ! -z "$username" ]; then
             useradd -m -g users -G wheel,storage,power -s /bin/bash $username
         fi
@@ -131,18 +131,10 @@ do
         fi
         ;;
     5)
-        dialog --title "Hostname" --msgbox "Enter the desired hostname" 6 44
-
-        while [ -z $HOSTNAME ]
-        do
-            if [ ! $? -eq 255 ]; then
-                HOSTNAME=$(dialog --inputbox "What is the desired hostname?" 10 30 --output-fd 1)
-            else
-                break
-            fi
-        done
+        HOSTNAME=$(dialog --inputbox "What is the desired hostname?" 10 30 --output-fd 1)
+        
         if [ ! -z "$HOSTNAME" ]; then
-            echo $HOSTNAME >> /etc/hostname
+            echo $HOSTNAME > /etc/hostname
         fi
         ;;
     6)
@@ -153,8 +145,9 @@ do
                  2 "use sudo without password" on) 
          
          
-        whichsudosetting=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)        
+        whichsudosetting=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty) 
         
+        ;;
         
         
 
