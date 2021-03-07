@@ -17,11 +17,12 @@ response=$?
 
 # Create checklist
 cmd=(dialog --separate-output --checklist "Select components" 22 76 16)
-options=(1 "Delete user alarm" off
-	2 "Modify root password" off
-	3 "Create default user" off
-	4 "Set a hostname" off
-	5 "Set sudo settings" off
+options=(1 "Initialize pacman keyring" off
+    2 "Delete user alarm" off
+	3 "Modify root password" off
+	4 "Create default user" off
+	5 "Set a hostname" off
+	6 "Set sudo settings" off
 )
 	
 #/ Create checklist
@@ -32,16 +33,34 @@ checklistchoices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
 
 #/ Show checklist
 
+# Declare functions
+
+function installifnotinstalled () {
+    if pacman -Qs $1 > /dev/null ; then
+        echo "$1 already installed."
+    else
+        pacman -S $1
+    fi
+}
+
+
+#/ Declare functions
+
+
 # Execute selected components
 
 
 for choice in $checklistchoices
 do
     case $choice in
-	1)
+    1)
+        pacman-key --init
+        pacman-key --populate archlinuxarm
+        ;;
+	2)
 		userdel -r alarm
 		;;
-	2)
+	3)
         while [ -z "$check" ]
             do
                 password=$(dialog --passwordbox "Enter the desired root password" 10 30 --output-fd 1)
@@ -74,7 +93,7 @@ do
             dialog --title "Information" --msgbox "Root password changed!" 6 44
         fi
         ;;
-    3)
+    4)
         username=$(dialog --passwordbox "Enter the desired username for the default user" 10 30 --output-fd 1)
         if [ ! -z "$username" ]; then
             useradd -m -g users -G wheel,storage,power -s /bin/bash $username
@@ -111,10 +130,43 @@ do
             dialog --title "Information" --msgbox "Password changed for $username!" 6 44
         fi
         ;;
+    5)
+        dialog --title "Hostname" --msgbox "Enter the desired hostname" 6 44
+
+        while [ -z $HOSTNAME ]
+        do
+            if [ ! $? -eq 255 ]; then
+                HOSTNAME=$(dialog --inputbox "What is the desired hostname?" 10 30 --output-fd 1)
+            else
+                break
+            fi
+        done
+        if [ ! -z "$HOSTNAME" ]; then
+            echo $HOSTNAME >> /etc/hostname
+        fi
+        ;;
+    6)
+        
+        
+        cmd=(dialog --radiolist "Make a choice" 22 76 16)
+        options=(1 "use sudo with password" off  
+                 2 "use sudo without password" on) 
+         
+         
+        whichsudosetting=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)        
+        
+        
+        
+
     esac
 
 done
 
 
 
-
+# % dialog --backtitle "CPU Selection" \
+#   --radiolist "Select CPU type:" 10 40 4 \
+#         1 386SX off \
+#         2 386DX on \
+#         3 486SX off \
+#         4 486DX off
