@@ -138,19 +138,37 @@ do
         fi
         ;;
     6)
-        
-        
-        cmd=(dialog --radiolist "Make a choice" 22 76 16)
-        options=(1 "use sudo with password" off  
-                 2 "use sudo without password" on) 
-         
-         
-        whichsudosetting=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty) 
-        
-        ;;
-        
-        
+        tempfile=`tempfile 2>/dev/null` || tempfile=/tmp/test$$
+        trap "rm -f $tempfile" 0 1 2 5 15
 
+        dialog --radiolist "Make a choice" 22 76 16 \
+            1 "use sudo with password" off  \
+            2 "use sudo without password" on 2> $tempfile
+
+        retval=$?
+
+        choice=`cat $tempfile`
+        case $retval in
+          0)
+            if [ "$choice" -eq 1 ]; then 
+                echo "%wheel ALL=(ALL) ALL" | EDITOR="tee -a" visudo
+            elif [ "$choice" -eq 2 ]; then 
+                echo "%wheel ALL=(ALL) NOPASSWD: ALL" | EDITOR="tee -a" visudo
+            else
+                echo "ESC pressed"
+            fi
+            ;;
+          1)
+            echo "Cancel pressed.";;
+          255)
+            echo "ESC pressed.";;
+        esac        
+        ;;
+    7)
+        
+        
+        
+        
     esac
 
 done
