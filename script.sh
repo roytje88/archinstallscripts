@@ -23,6 +23,7 @@ options=(1 "Initialize pacman keyring" off
 	4 "Create default user" off
 	5 "Set a hostname" off
 	6 "Set sudo settings" off
+    7 "Install packer (aur helper)" off
 )
 	
 #/ Create checklist
@@ -41,6 +42,45 @@ function installifnotinstalled () {
     else
         pacman -S $1
     fi
+}
+
+
+createUser() {
+        username=$(dialog --inputbox "Enter the desired username for the default user" 10 30 --output-fd 1)
+        if [ ! -z "$username" ]; then
+            useradd -m -g users -G wheel,storage,power -s /bin/bash $username
+        fi
+        while [ -z "$check" ]
+            do
+                password=$(dialog --passwordbox "Enter the desired password for $username" 10 30 --output-fd 1)
+                if [ ! $? -eq 255 ]; then
+                    confirmpw=$(dialog --passwordbox "confirm your password" 10 30 --output-fd 1)
+                else
+                    dialog --title "Information" --msgbox "Canceled! Password unchanged for $username!" 6 44
+                    break
+                fi
+                if [ ! $? -eq 255 ]; then
+                    if [ "$password" = "$confirmpw" ]; then
+                        if [ -z "$password" ]; then
+                            dialog --title "Information" --msgbox "Password cannot be empty! Please try again." 6 44
+                        else
+                            check="not empty"
+                        fi
+                    elif [ $? -eq 255]; then
+                        dialog --title "Information" --msgbox "Canceled! Password unchanged for $username!" 6 44
+                        break
+                    else
+                        dialog --title "Information" --msgbox "Passwords do not match! Please try again." 6 44
+                    fi
+                else
+                    dialog --title "Information" --msgbox "Canceled! Password unchanged for $username!" 6 44
+                    break
+                fi
+            done
+        if [ ! -z "$check" ]; then
+            echo $password | passwd --stdin
+            dialog --title "Information" --msgbox "Password changed for $username!" 6 44
+        fi
 }
 
 
@@ -94,41 +134,8 @@ do
         fi
         ;;
     4)
-        username=$(dialog --inputbox "Enter the desired username for the default user" 10 30 --output-fd 1)
-        if [ ! -z "$username" ]; then
-            useradd -m -g users -G wheel,storage,power -s /bin/bash $username
-        fi
-        while [ -z "$check" ]
-            do
-                password=$(dialog --passwordbox "Enter the desired password for $username" 10 30 --output-fd 1)
-                if [ ! $? -eq 255 ]; then
-                    confirmpw=$(dialog --passwordbox "confirm your password" 10 30 --output-fd 1)
-                else
-                    dialog --title "Information" --msgbox "Canceled! Password unchanged for $username!" 6 44
-                    break
-                fi
-                if [ ! $? -eq 255 ]; then
-                    if [ "$password" = "$confirmpw" ]; then
-                        if [ -z "$password" ]; then
-                            dialog --title "Information" --msgbox "Password cannot be empty! Please try again." 6 44
-                        else
-                            check="not empty"
-                        fi
-                    elif [ $? -eq 255]; then
-                        dialog --title "Information" --msgbox "Canceled! Password unchanged for $username!" 6 44
-                        break
-                    else
-                        dialog --title "Information" --msgbox "Passwords do not match! Please try again." 6 44
-                    fi
-                else
-                    dialog --title "Information" --msgbox "Canceled! Password unchanged for $username!" 6 44
-                    break
-                fi
-            done
-        if [ ! -z "$check" ]; then
-            echo $password | passwd --stdin
-            dialog --title "Information" --msgbox "Password changed for $username!" 6 44
-        fi
+        createUser
+        
         ;;
     5)
         HOSTNAME=$(dialog --inputbox "What is the desired hostname?" 10 30 --output-fd 1)
@@ -165,10 +172,22 @@ do
         esac        
         ;;
     7)
+        installifnotinstalled wget
+        installifnotinstalled base-devel
         
         
+        username=$(dialog --inputbox "Enter the username to install packer." 10 30 --output-fd 1)
+        
+        cd /tmp
+        wget https://aur.archlinux.org/cgit/aur.git/snapshot/packer.tar.gz
+        tar -xvf packer.tar.gz
+        chown -R $username: /tmp/packer
+        runuser -l $username -c "cd /tmp/packer && makepkg"
+        
+        sudo pacman -U /tmp/packer/$(ls /tmp/packer|grep packer-)
         
         
+        ;;
     esac
 
 done
