@@ -24,6 +24,10 @@ options=(1 "Initialize pacman keyring" off
 	5 "Set a hostname" off
 	6 "Set sudo settings" off
     7 "Install packer (aur helper)" off
+    8 "Install and configure NZBget" off
+    9 "Install Plex Media Server" off
+    10 "Create fixed mountpoints for harddisks" off
+    11 "Set up NFS server" off
 )
 	
 #/ Create checklist
@@ -40,7 +44,16 @@ function installifnotinstalled () {
     if pacman -Qs $1 > /dev/null ; then
         echo "$1 already installed."
     else
-        pacman -S $1
+        pacman -S $1 --noconfirm
+    fi
+}
+
+function installifnotinstalledwithpacker () {
+    if pacman -Qs $1 > /dev/null ; then
+        echo "$1 already installed."
+    else
+        username=$(dialog --inputbox "Enter user to install $1" 10 30 --output-fd 1)
+        runuser -l $username -c "packer -S $1 --noconfirm"
     fi
 }
 
@@ -83,6 +96,12 @@ createUser() {
         fi
 }
 
+
+function addfixeddisk() {
+mountpt=$(dialog --title "Harddisks" --backtitle "Set fixed mountpoints for harddisks" --inputbox "Enter the desired mountpoint for $1, "$(lsblk -o SIZE,KNAME|grep $1|xargs|cut -d' ' -f1)" (i.e. /media/harddisk)." 10 30 --output-fd 1)
+
+echo "UUID=\"$(blkid -o value -s UUID /dev/$1)\" $mountpt ext4 defaults 0 0" >> /etc/fstab
+}
 
 #/ Declare functions
 
@@ -188,15 +207,94 @@ do
         
         
         ;;
+        
+    8)
+        installifnotinstalled nzbget-systemd
+        DIALOG=$(dialog --stdout --title "Systemd service" \
+            --yesno "Enable systemd service for NZBget?" 10 70)
+        response=$?
+        if [ "$response" -eq 0 ]; then
+            systemctl enable nzbget
+        fi
+        
+        ;;
+     9)
+        installifnotinstalled plex-media-server
+        DIALOG=$(dialog --stdout --title "Systemd service" \
+            --yesno "Enable systemd service for Plex?" 10 70)
+        response=$?
+        if [ "$response" -eq 0 ]; then
+            systemctl enable plexmediaserver
+        fi
+        
+        ;;
+        
+    10)
+        hdds=()
+        for hdd in $(lsblk -o KNAME,TYPE |grep part|cut -d' ' -f1); do
+            hdds=("${hdds[@]} "${hdd})
+        done
+
+        arr=""
+        for hdd in $hdds; do
+            arr="$arr $hdd \"$(lsblk -o SIZE,KNAME|grep $hdd|xargs|cut -d' ' -f1)\" off "
+        done
+
+        hddarr=($arr)
+
+        dialogcmd=(dialog --checklist "Select for which harddisk(s) a fixed mountpoint should be created." 22 76 16)
+
+        harddisks=$("${dialogcmd[@]}" "${hddarr[@]}" 2>&1 >/dev/tty)
+
+        if [ ! $? -eq 255 ]; do
+            for choice in $harddisks; do
+                addfixeddisk "$choice"
+            done
+        else
+            echo "Canceled!"
+        done     
+
+        ;;
+    11)
+        
+        share=$(dialog --title "NFS" --backtitle "Set up NFS server" --inputbox "Enter the name of the folder to create and share (i.e. /srv/media/harddisk)." 10 30 --output-fd 1)
+        actualfolder=$(dialog --title "NFS" --backtitle "Set up NFS server" --inputbox "Enter the name of the folder to bind to the shared folder (i.e. /media/harddisk)." 10 30 --output-fd 1)
+        
+        ips=$(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
+        arr=""
+        for ip in $ips; do
+            arr="$arr $ip IP off "
+        done
+
+        tempfile=`tempfile 2>/dev/null` || tempfile=/tmp/test$$
+        trap "rm -f $tempfile" 0 1 2 5 15
+
+
+        dialog --backtitle "Test" \
+            --radiolist "test" 0 0 5 \
+            $arr 2> $tempfile
+
+        retval=$?
+
+        choice=`cat $tempfile`
+        case $retval in
+          0)
+            mkdir -p $share
+            echo "$actualfolder $share none bind 0 0" >> /etc/fstab
+            echo "$share $choice/24(rw,no_subtree_check,nohide,sync,no_root_squash,insecure,no_auth_nlm)" >> /etc/exports
+            exportfs -rav
+            ;;
+          1)
+            echo "Cancel pressed.";;
+          255)
+            echo "ESC pressed.";;
+        esac  
+        ;;
+    
+    
+    
+    
+    
     esac
 
 done
-
-
-
-# % dialog --backtitle "CPU Selection" \
-#   --radiolist "Select CPU type:" 10 40 4 \
-#         1 386SX off \
-#         2 386DX on \
-#         3 486SX off \
-#         4 486DX off
