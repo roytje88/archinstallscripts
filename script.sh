@@ -28,6 +28,8 @@ options=(1 "Initialize pacman keyring" off
     9 "Install Plex Media Server" off
     10 "Create fixed mountpoints for harddisks" off
     11 "Set up NFS server" off
+    12 "Install and configure a display manager" off
+    13 "Install and configure a desktop environment" off
 )
 	
 #/ Create checklist
@@ -193,7 +195,8 @@ do
     7)
         installifnotinstalled wget
         installifnotinstalled base-devel
-        
+        installifnotinstalled jshon 
+        installifnotinstalled expac
         
         username=$(dialog --inputbox "Enter the username to install packer." 10 30 --output-fd 1)
         
@@ -210,6 +213,9 @@ do
         
     8)
         installifnotinstalled nzbget-systemd
+        installifnotinstalled par2cmdline
+        installifnotinstalled unrar
+        
         DIALOG=$(dialog --stdout --title "Systemd service" \
             --yesno "Enable systemd service for NZBget?" 10 70)
         response=$?
@@ -256,7 +262,7 @@ do
 
         ;;
     11)
-        
+        installifnotinstalled nfs-utils
         share=$(dialog --title "NFS" --backtitle "Set up NFS server" --inputbox "Enter the name of the folder to create and share (i.e. /srv/media/harddisk)." 10 30 --output-fd 1)
         actualfolder=$(dialog --title "NFS" --backtitle "Set up NFS server" --inputbox "Enter the name of the folder to bind to the shared folder (i.e. /media/harddisk)." 10 30 --output-fd 1)
         
@@ -291,9 +297,49 @@ do
         esac  
         ;;
     
-    
-    
-    
+    12)
+        installifnotinstalled sudo
+        installifnotinstalled alsa-utils
+        installifnotinstalled mesa
+        installifnotinstalled xf86-video-fbdev
+        installifnotinstalled dosfstools
+        
+        DMs=("lxdm lxdm" "gdm gdm" "sddm sddm")
+
+        options=""
+        for dm in "${DMs[@]}"; do
+            options="$options $dm off "
+        done
+
+        dmarr=($options)
+        cmd=(dialog --checklist "Select which DM(s) should be installed" 22 76 16)
+        dmstoinstall=$("${cmd[@]}" "${dmarr[@]}" 2>&1 >/dev/tty)
+
+        for choice in $dmstoinstall; do
+            installifnotinstalled $choice
+            test="$(file /etc/systemd/system/display-manager.service)"
+            if [[ ! $test == *"(No such file or directory)"* ]]; then
+                trail="${test##*/}"
+                out="${trail%.service}"
+                DIALOG=$(dialog --stdout --title "Systemd service" \
+                        --yesno "Detected another display manager. Disable $out?" 10 70)
+                response=$?
+                if [ "$response" -eq 0 ]; then
+                    systemctl disable $out
+                fi
+            fi   
+            DIALOG=$(dialog --stdout --title "Systemd service" \
+                    --yesno "Enable systemd service for $choice?" 10 70)
+            response=$?
+            if [ "$response" -eq 0 ]; then
+                systemctl enable $choice
+            fi        
+        done        
+        ;;
+
+
+
+# chromium of firefox
     
     esac
 
