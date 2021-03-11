@@ -16,12 +16,8 @@ for dm in "${DMs[@]}"; do
 done
 
 dmarr=($options)
-
 cmd=(dialog --checklist "Select which DM(s) should be installed" 22 76 16)
-
 dmstoinstall=$("${cmd[@]}" "${dmarr[@]}" 2>&1 >/dev/tty)
-
-
 
 for choice in $dmstoinstall; do
     installifnotinstalled $choice

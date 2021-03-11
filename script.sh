@@ -17,7 +17,8 @@ response=$?
 
 # Create checklist
 cmd=(dialog --separate-output --checklist "Select components" 22 76 16)
-options=(1 "Initialize pacman keyring" off
+options=(0 "Set up an SD Card for Archlinux" off
+    1 "Initialize pacman keyring" off
     2 "Delete user alarm" off
 	3 "Modify root password" off
 	4 "Create default user" off
@@ -41,6 +42,36 @@ checklistchoices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
 #/ Show checklist
 
 # Declare functions
+
+function createsdcard() {
+
+DIALOG=$(dialog --stdout --title "WARNING!!!!" \
+        --yesno "Warning! Are you REALLY sure you want to reformat $1??? 
+There is NO turning back!" 10 70)
+
+response=$?
+if [ "$response" -eq 0 ]; then
+fdisk $1 <<EEOF
+o
+n                                                                                                             
+p
+1
+
++50M
+t
+b
+n
+p
+2
+
+
+
+w                                                                                                             
+EEOF
+fi
+
+}
+
 
 function installifnotinstalled () {
     if pacman -Qs $1 > /dev/null ; then
@@ -114,6 +145,37 @@ echo "UUID=\"$(blkid -o value -s UUID /dev/$1)\" $mountpt ext4 defaults 0 0" >> 
 for choice in $checklistchoices
 do
     case $choice in
+    0)
+        tempfile=`tempfile 2>/dev/null` || tempfile=/tmp/test$$
+        trap "rm -f $tempfile" 0 1 2 5 15
+
+        hdds=()
+        for hdd in $(lsblk -o KNAME,TYPE |grep disk|cut -d' ' -f1); do
+            hdds=("${hdds[@]} "${hdd})
+        done
+
+        arr=""
+        for hdd in $hdds; do
+            arr="$arr $hdd \"$(lsblk -o SIZE,KNAME|grep $hdd|xargs|cut -d' ' -f1)\" off "
+        done
+
+        dialog --radiolist "Select the SD card" 0 0 5 \
+            $arr 2> $tempfile
+
+        retval=$?
+
+        choice=`cat $tempfile`
+        case $retval in
+          0)
+            createsdcard $choice
+            ;;
+          1)
+            echo "Cancel pressed.";;
+          255)
+            echo "ESC pressed.";;
+        esac  
+        
+        
     1)
         pacman-key --init
         pacman-key --populate archlinuxarm
@@ -252,14 +314,9 @@ do
 
         harddisks=$("${dialogcmd[@]}" "${hddarr[@]}" 2>&1 >/dev/tty)
 
-        if [ ! $? -eq 255 ]; do
-            for choice in $harddisks; do
-                addfixeddisk "$choice"
-            done
-        else
-            echo "Canceled!"
-        done     
-
+        for choice in $harddisks; do
+            addfixeddisk "$choice"
+        done
         ;;
     11)
         installifnotinstalled nfs-utils
@@ -277,7 +334,7 @@ do
 
 
         dialog --backtitle "Test" \
-            --radiolist "test" 0 0 5 \
+            --radiolist "Select IP address on which to cast the NFS server" 0 0 5 \
             $arr 2> $tempfile
 
         retval=$?
@@ -337,7 +394,23 @@ do
         done        
         ;;
 
+    13)
+        DEs=("gnome GnomeDesktop" "lxde LXDE" "mate MATE")
 
+        options=""
+        for de in "${DEs[@]}"; do
+            options="$options $de off "
+        done
+
+        dearr=($options)
+        cmd=(dialog --checklist "Select which Desktop environment(s) should be installed" 22 76 16)
+        destoinstall=$("${cmd[@]}" "${dearr[@]}" 2>&1 >/dev/tty)
+
+        for choice in $destoinstall; do
+            installifnotinstalled $choice
+        done
+        ;;
+        
 
 # chromium of firefox
     
