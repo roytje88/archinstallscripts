@@ -174,7 +174,7 @@ do
           255)
             echo "ESC pressed.";;
         esac  
-        
+        ;;
         
     1)
         pacman-key --init
