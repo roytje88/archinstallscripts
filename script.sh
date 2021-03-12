@@ -31,6 +31,10 @@ options=(0 "Set up an SD Card for Archlinux" off
     11 "Set up NFS server" off
     12 "Install and configure a display manager" off
     13 "Install and configure a desktop environment" off
+    14 "Configure NFS mounts (client)" off
+    15 "Set (new) locale" off
+    16 "Install and configure ICAclient (Citrix Workspace)" off
+    17 "Set up /boot/config.txt" off
 )
 	
 #/ Create checklist
@@ -42,6 +46,14 @@ checklistchoices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
 #/ Show checklist
 
 # Declare functions
+
+function installifnotinstalled () {
+    if pacman -Qs $1 > /dev/null ; then
+        echo "$1 already installed."
+    else
+        pacman -Sy $1 --noconfirm
+    fi
+}
 
 function createsdcard() {
 
@@ -70,16 +82,34 @@ w
 EEOF
 fi
 
+if [[ ! $1 == *"mmc"* ]]; then
+    disk_part="/dev/$1"
+else
+    disk_part="/dev/${1}p"
+fi
+
+installifnotinstalled dosfstools
+mkfs.vfat ${disk_part}1
+mkfs.ext4 ${disk_part}2
+
+mkdir -p /tmp/sdcard/boot /tmp/sdcard/root
+mount ${disk_part}1 /tmp/sdcard/boot
+mount ${disk_part}2 /tmp/sdcard/root
+
+cd /tmp/sdcard
+installifnotinstalled wget
+
+wget http://os.archlinuxarm.org/os/ArchLinuxARM-rpi-4-latest.tar.gz
+bsdtar -xpf ArchLinuxARM-rpi-4-latest.tar.gz -C root
+sync
+mv root/boot/* boot
+
+umount boot root
+
 }
 
 
-function installifnotinstalled () {
-    if pacman -Qs $1 > /dev/null ; then
-        echo "$1 already installed."
-    else
-        pacman -S $1 --noconfirm
-    fi
-}
+
 
 function installifnotinstalledwithpacker () {
     if pacman -Qs $1 > /dev/null ; then
@@ -124,9 +154,68 @@ createUser() {
                 fi
             done
         if [ ! -z "$check" ]; then
-            echo $password | passwd --stdin
+            echo "$username:$password" | chpasswd
             dialog --title "Information" --msgbox "Password changed for $username!" 6 44
         fi
+}
+
+function addNFSclient() {
+ipaddress=$(dialog --inputbox "Enter the IP address of the NFS server." 10 30 --output-fd 1)
+arr="$(showmount -e $ipaddress|grep "/24"|xargs)"
+arr=(${arr})
+ 
+foundshares=""
+x=0
+y=0
+for i in ${arr[@]}; do
+    if [[ "$x" -eq 1 ]]; then
+        foundshares="$foundshares ${arr[$((y-1))]} ${arr[$((y))]} off "
+        foundshares+=($str)
+        x=0
+        y=$((y+1))
+    else
+        x=$((x+1))
+        y=$((y+1))
+    fi
+done
+
+
+array=($foundshares)
+cmd=(dialog --checklist "Select the share(s) to create a systemd-unit" 22 76 16)
+sharesfornfs=$("${cmd[@]}" "${array[@]}" 2>&1 >/dev/tty)
+
+for choice in $sharesfornfs; do
+    mntpt=$(dialog --inputbox "Enter the default mountpoint for $choice (WITHOUTH THE LEADING SLASH! i.e. for /media/4tb, type media/4tb)" 10 30 --output-fd 1)
+    
+    realmountpt=$(echo "/$mntpt")
+    mkdir -p $realmountpt
+    systemdfile="/etc/systemd/system/$(echo "${mntpt/"/"/"-"}")"
+    
+    echo "[Unit]
+		
+Description=Things devices
+After=network.target
+
+[Mount]
+What=${ipaddress}:${choice}
+Where=${realmountpt}
+Type=nfs
+Options=_netdev,auto
+
+[Install]
+WantedBy=multi-user.target
+" > ${systemdfile}.mount
+
+    DIALOG=$(dialog --stdout --title "Systemd service" \
+            --yesno "Enable systemd service for $realmountpt?" 10 70)
+    response=$?
+    if [ "$response" -eq 0 ]; then
+        systemctl enable $(echo "${mntpt/"/"/"-"}").mount
+    fi     
+       
+done       
+
+
 }
 
 
@@ -179,6 +268,7 @@ do
     1)
         pacman-key --init
         pacman-key --populate archlinuxarm
+        pacman -Syu --noconfirm
         ;;
 	2)
 		userdel -r alarm
@@ -212,7 +302,7 @@ do
                 fi
             done
         if [ ! -z "$check" ]; then
-            echo $password | passwd --stdin
+            echo "root:$password" | chpasswd
             dialog --title "Information" --msgbox "Root password changed!" 6 44
         fi
         ;;
@@ -228,6 +318,7 @@ do
         fi
         ;;
     6)
+        installifnotinstalled sudo
         tempfile=`tempfile 2>/dev/null` || tempfile=/tmp/test$$
         trap "rm -f $tempfile" 0 1 2 5 15
 
@@ -259,6 +350,7 @@ do
         installifnotinstalled base-devel
         installifnotinstalled jshon 
         installifnotinstalled expac
+        installifnotinstalled git
         
         username=$(dialog --inputbox "Enter the username to install packer." 10 30 --output-fd 1)
         
@@ -268,7 +360,7 @@ do
         chown -R $username: /tmp/packer
         runuser -l $username -c "cd /tmp/packer && makepkg"
         
-        sudo pacman -U /tmp/packer/$(ls /tmp/packer|grep packer-)
+        pacman -U /tmp/packer/$(ls /tmp/packer|grep packer-)
         
         
         ;;
@@ -287,7 +379,7 @@ do
         
         ;;
      9)
-        installifnotinstalled plex-media-server
+        installifnotinstalledwithpacker plex-media-server
         DIALOG=$(dialog --stdout --title "Systemd service" \
             --yesno "Enable systemd service for Plex?" 10 70)
         response=$?
@@ -410,10 +502,97 @@ do
             installifnotinstalled $choice
         done
         ;;
-        
-
+    14)
+        addNFSclient
+        ;;
+    15)
+        DIALOG=$(dialog --stdout --title "Locales" \
+                --yesno "Enable default locale (en_US.UTF-8)?" 10 70)
+        response=$?
+        if [ "$response" -eq 0 ]; then
+            newlocale="en_US.UTF-8"
+        elif [ "$response" -eq 1 ]; then
+            newlocale=$(dialog --title "Locales" --backtitle "Set up new locale" --inputbox "Enter the desired default locale then (only **_**.UTF-8)." 10 30 --output-fd 1)
+        fi
+        if [ ! "$newlocale" == "" ]; then
+            localectl set-locale LANG=$newlocale
+            echo "$newlocale UTF-8" >> /etc/locale.gen
+            locale-gen
+        fi
+        ;;
 # chromium of firefox
-    
+    16)
+#         installifnotinstalled xorg-xprop
+#         installifnotinstalledwithpacker icaclient
+#         echo "[Desktop Entry]
+# Name=Citrix ICA client
+# Categories=Network;
+# Exec=/opt/Citrix/ICAClient/wfica
+# Terminal=false
+# Type=Application
+# NoDisplay=true
+# MimeType=application/x-ica;" > /usr/share/applications/wfica.desktop
+
+#         username=$(dialog --inputbox "Enter user to configure Citrix Workspace" 10 30 --output-fd 1)
+#         mkdir -p /home/${username}/.ICAClient/cache
+#         cp /opt/Citrix/ICAClient/config/{All_Regions,Trusted_Region,Unknown_Region,canonicalization,regions}.ini /home/${username}/.ICAClient/
+
+#         cd /opt/Citrix/ICAClient/keystore/cacerts/ && cp /etc/ca-certificates/extracted/tls-ca-bundle.pem . && awk 'BEGIN {c=0;} /BEGIN CERT/{c++} { print > "cert." c ".pem"}' < tls.ca-bundle.pem
+#         openssl rehash /opt/Citrix/ICAClient/keystore/cacerts/
+#         ln -s /usr/lib/libpcre.so.1 /usr/lib/libpcre.so.3
+        
+        ;;
+    17)
+
+        DIALOG=$(dialog --stdout --title "config.txt" \
+                --yesno "Remove black borders (overscan)?" 10 70)
+        response=$?
+        if [ "$response" -eq 0 ]; then
+            echo "disable_overscan=1" >> /boot/config.txt
+        fi       
+        
+        gpumem=$(dialog --title "config.txt" --backtitle "Enter amount of GPU memory in MBs" 10 30 --output-fd 1)
+        echo "gpu_mem=$gpumem" >> /boot/config.txt
+        
+        DIALOG=$(dialog --stdout --title "config.txt" \
+                --yesno "Overclock frequency to 2000Hz?" 10 70)
+        response=$?
+        if [ "$response" -eq 0 ]; then
+            echo "over_voltage=5
+arm_freq=2000" >> /boot/config.txt
+        fi       
+        
+        
+        ;;
+        
+        
+        
+        
+        
     esac
 
 done
+
+
+# #!/bin/bash
+# pacman -S xorg-xprop
+# runuser -l roy -c "packer -S icaclient"
+
+# echo "[Desktop Entry]
+# Name=Citrix ICA client
+# Categories=Network;
+# Exec=/opt/Citrix/ICAClient/wfica
+# Terminal=false
+# Type=Application
+# NoDisplay=true
+# MimeType=application/x-ica;" > /usr/share/applications/wfica.desktop
+
+
+# cd /opt/Citrix/ICAClient/keystore/cacerts/
+# cp /etc/ca-certificates/extracted/tls-ca-bundle.pem .
+# awk 'BEGIN {c=0;} /BEGIN CERT/{c++} { print > "cert." c ".pem"}' < tls.ca-bundle.pem
+
+# openssl rehash /opt/Citrix/ICAClient/keystore/cacerts/
+
+# ln -s /usr/lib/libpcre.so.1 /usr/lib/libpcre.so.3
+
