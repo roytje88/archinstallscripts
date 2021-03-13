@@ -35,8 +35,19 @@ options=(0 "Set up an SD Card for Archlinux" off
     15 "Set (new) locale" off
     16 "Install and configure ICAclient (Citrix Workspace)" off
     17 "Set up /boot/config.txt" off
+    18 "Create MySQL database for Kodi" off
+    19 "Install Spotweb" off
+    20 "set correct timezone (Europe/Amsterdam)" off
+    21 "Enable Numlock on boot" off
 )
 	
+    
+cmdcustompackages=(dialog --separate-output --checklist "Select custom packages to install" 22 76 16)
+optionscustompackages=(1 "chromium" off
+    2 "firefox" off
+    3 "gnome-extra" off
+    4 "pulseaudio" off
+    5 "pulseaudio-alsa" off)
 #/ Create checklist
 
 # Show checklist
@@ -160,6 +171,7 @@ createUser() {
 }
 
 function addNFSclient() {
+pacman -S nfs-utils
 ipaddress=$(dialog --inputbox "Enter the IP address of the NFS server." 10 30 --output-fd 1)
 arr="$(showmount -e $ipaddress|grep "/24"|xargs)"
 arr=(${arr})
@@ -218,12 +230,25 @@ done
 
 }
 
-
 function addfixeddisk() {
 mountpt=$(dialog --title "Harddisks" --backtitle "Set fixed mountpoints for harddisks" --inputbox "Enter the desired mountpoint for $1, "$(lsblk -o SIZE,KNAME|grep $1|xargs|cut -d' ' -f1)" (i.e. /media/harddisk)." 10 30 --output-fd 1)
 
 echo "UUID=\"$(blkid -o value -s UUID /dev/$1)\" $mountpt ext4 defaults 0 0" >> /etc/fstab
 }
+
+
+function configuresql() {
+        installationfile="/var/lib/mysql_installed"
+        if [ ! -f "$installationfile" ]; then
+            pacman -Syu --noconfirm apache php-apache mariadb php-gd
+            mysql_install_db --user=mysql --basedir=/usr --datadir=/var/lib/mysql
+            systemctl start mariadb
+            mysql_secure_installation
+            touch $installationfile
+            systemctl enable mariadb
+        fi
+}
+
 
 #/ Declare functions
 
@@ -347,7 +372,7 @@ do
         ;;
     7)
         installifnotinstalled wget
-        installifnotinstalled base-devel
+        pacman -S base-devel
         installifnotinstalled jshon 
         installifnotinstalled expac
         installifnotinstalled git
@@ -411,7 +436,7 @@ do
         done
         ;;
     11)
-        installifnotinstalled nfs-utils
+        pacman -S nfs-utils
         share=$(dialog --title "NFS" --backtitle "Set up NFS server" --inputbox "Enter the name of the folder to create and share (i.e. /srv/media/harddisk)." 10 30 --output-fd 1)
         actualfolder=$(dialog --title "NFS" --backtitle "Set up NFS server" --inputbox "Enter the name of the folder to bind to the shared folder (i.e. /media/harddisk)." 10 30 --output-fd 1)
         
@@ -487,6 +512,7 @@ do
         ;;
 
     13)
+	installifnotinstalled lxterminal
         DEs=("gnome GnomeDesktop" "lxde LXDE" "mate MATE")
 
         options=""
@@ -499,7 +525,7 @@ do
         destoinstall=$("${cmd[@]}" "${dearr[@]}" 2>&1 >/dev/tty)
 
         for choice in $destoinstall; do
-            installifnotinstalled $choice
+            pacman -S $choice
         done
         ;;
     14)
@@ -520,8 +546,9 @@ do
             locale-gen
         fi
         ;;
-# chromium of firefox
+
     16)
+        echo "Last time there were some troubles. Please try to install manually."
 #         installifnotinstalled xorg-xprop
 #         installifnotinstalledwithpacker icaclient
 #         echo "[Desktop Entry]
@@ -551,7 +578,7 @@ do
             echo "disable_overscan=1" >> /boot/config.txt
         fi       
         
-        gpumem=$(dialog --title "config.txt" --backtitle "Enter amount of GPU memory in MBs" 10 30 --output-fd 1)
+        gpumem=$(dialog --title "config.txt" --backtitle "GPU Memory" --inputbox "Enter amount of GPU memory in MBs" 10 30 --output-fd 1)
         echo "gpu_mem=$gpumem" >> /boot/config.txt
         
         DIALOG=$(dialog --stdout --title "config.txt" \
@@ -565,10 +592,75 @@ arm_freq=2000" >> /boot/config.txt
         
         ;;
         
+    18)
+        configuresql
+        echo "CREATE USER 'kodi' IDENTIFIED BY 'kodi';
+GRANT ALL ON *.* TO 'kodi';
+flush privileges;" > tmp.sql
+        mysql < tmp.sql
+        rm tmp.sql
+        
+        ;;
+    19)
+        configuresql
+        pacman -S php7-apache
+        pacman -S php7-gd
+        pacman -S cronie
+        sed -i 's/;date.timezone =/date.timezone = Europe\/Amsterdam/g' /etc/php7/php.ini
+        sed -i 's/;extension=gd/extension=gd/g' /etc/php7/php.ini
+        sed -i 's/;extension=mysqli/extension=mysqli/g' /etc/php7/php.ini
+        sed -i 's/;extension=gettext/extension=gettext/g' /etc/php7/php.ini
+        sed -i 's/;extension=pdo_mysql/extension=pdo_mysql/g' /etc/php7/php.ini
+        
+        sed -i 's/#LoadModule rewrite_module modules\/mod_rewrite.so/LoadModule rewrite_module modules\/mod_rewrite.so/g' /etc/httpd/conf/httpd.conf
+        sed -i 's/LoadModule mpm_event_module modules\/mod_mpm_event.so/#LoadModule mpm_event_module modules\/mod_mpm_event.so/g' /etc/httpd/conf/httpd.conf
+        sed -i 's/#LoadModule mpm_prefork_module modules\/mod_mpm_prefork.so/LoadModule mpm_prefork_module modules\/mod_mpm_prefork.so/g' /etc/httpd/conf/httpd.conf
+        sed -i '/LoadModule rewrite_module modules\/mod_rewrite.so/aLoadModule php7_module modules\/libphp7.so' /etc/httpd/conf/httpd.conf            
+        sed -i '/LoadModule php7_module modules\/libphp7.so/aAddHandler php7-script .php' /etc/httpd/conf/httpd.conf
+        sed -i '/Include conf\/extra\/httpd-default.conf/aInclude conf\/extra\/php7_module.conf' /etc/httpd/conf/httpd.conf
+        systemctl start httpd
+        echo "CREATE DATABASE spotweb;
+CREATE USER 'spotweb'@'localhost' IDENTIFIED BY 'spotweb';
+GRANT ALL PRIVILEGES ON spotweb.* TO spotweb@localhost IDENTIFIED BY 'spotweb';" > tmp.sql
+        mysql -u root -p < tmp.sql
+        rm tmp.sql
+        chmod -R 777 /srv/http/
+        cd /srv/http/
+        git clone https://github.com/spotweb/spotweb.git
+        systemctl restart httpd
+        echo "Go to http://localhost/spotweb/install.php 
+        Press [ENTER] to continue"
+        read dummy
+        crontab -l cron.tmp
+        echo "*/14 * * * * php /srv/http/spotweb/retrieve.php --force" >> cron.tmp
+        crontab cron.tmp
+        rm cron.tmp
+        systemctl enable httpd
+        systemctl enable cronie --now
+        
+        echo "<IfModule mod_rewrite.c>
+        RewriteEngine on
+        RewriteCond %{REQUEST_URI} !api/
+        RewriteBase /spotweb/
+        RewriteRule api/?$ index.php?page=newznabapi [QSA,L]
+        RewriteRule details/([^/]+) index.php?page=getspot&messageid=$1 [L]
+</IfModule>" > /srv/http/spotweb/.htaccess
+        echo "Manually set AllowOverride to All in /etc/httpd/conf/httpd.conf!"
+        read dummy
+        nano /etc/httpd/conf/httpd.conf
+        
+        ;;
+    20)
+        timedatectl set-timezone Europe/Amsterdam
+        timedatectl set-local-rtc 1
         
         
         
-        
+        ;;
+    21)
+        installifnotinstalledwithpacker systemd-numlockontty
+        systemctl enable numLockOnTty 
+        ;;
     esac
 
 done

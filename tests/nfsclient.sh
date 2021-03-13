@@ -1,6 +1,7 @@
 #!/bin/bash
 
-addNFSclient() {
+function addNFSclient() {
+pacman -S nfs-utils
 ipaddress=$(dialog --inputbox "Enter the IP address of the NFS server." 10 30 --output-fd 1)
 arr="$(showmount -e $ipaddress|grep "/24"|xargs)"
 arr=(${arr})
@@ -58,6 +59,7 @@ done
 
 
 }
+
 
 
 addNFSclient
