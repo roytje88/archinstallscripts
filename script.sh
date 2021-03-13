@@ -782,10 +782,10 @@ ReadWritePaths = /tmp" >> /etc/systemd/system/php-fpm.service.d/pihole.conf
  
  
     25)
-	installifnotinstalled home-assistant
+	   installifnotinstalled home-assistant
 	
 	
- 	;;
+ 	      ;;
  	
     26)
     
@@ -801,32 +801,32 @@ ReadWritePaths = /tmp" >> /etc/systemd/system/php-fpm.service.d/pihole.conf
     	
     	servername=$(dialog --title "Nginx" --inputbox "Enter the name of the server (i.e. example.com)" 10 30 --output-fd 1)
     	
-    	echo "
-worker_processes  1;
-
-
-events {
-    worker_connections  1024;
-}    	
-    http {
-    ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
-    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-
-    # Redirect to HTTPS
-    server {
-        listen 82;
-        server_name ${servername};
-        return 301 https://$host$request_uri;
-    }
-
-
-
-
-}
-" > /etc/nginx/nginx.conf
-
+#    	echo "
+#worker_processes  1;
+#
+#
+#events {
+#    worker_connections  1024;
+#}    	
+#    http {
+#    ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
+#    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+#
+#    # Redirect to HTTPS
+#    server {
+#        listen 82;
+#        server_name ${servername};
+#        return 301 https://$host$request_uri;
+#    }
+#
+#
+#
+#
+#}
+#" > /etc/nginx/nginx.conf
+#
     	
- ;;
+        ;;
     	
 done
 
