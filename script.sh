@@ -40,6 +40,11 @@ options=(0 "Set up an SD Card for Archlinux" off
     20 "set correct timezone (Europe/Amsterdam)" off
     21 "Enable Numlock on boot" off
     22 "Install JupyterLab" off
+    23 "Install and configure Mopidy" off
+    24 "Install Pi-Hole" off
+    25 "Install Home Assistant" off
+    26 "Install Nginx (including certbot)" off
+    
 )
 	
     
@@ -596,7 +601,14 @@ do
 arm_freq=2000" >> /boot/config.txt
         fi       
         
+        DIALOG=$(dialog --stdout --title "config.txt" \
+                --yesno "Enable audio 3.5mm?" 10 70)
+        response=$?
+        if [ "$response" -eq 0 ]; then
+            echo "dtparam=audio=on" >> /boot/config.txt
+        fi 
         
+
         ;;
         
     18)
@@ -674,8 +686,148 @@ GRANT ALL PRIVILEGES ON spotweb.* TO spotweb@localhost IDENTIFIED BY 'spotweb';"
         runasuser "jupyter lab build"
         
         ;;
-    esac
+    23)
+    	pacman -S mopidy
+    	
+    	installifnotinstalledwithpacker mopidy-mpd
+    	echo "
 
+[mpd]
+hostname = ::
+enabled = true
+server = "$(cat /etc/hostname)"
+
+" >> /etc/mopidy/mopidy.conf
+	
+    	echo "
+    	
+[http]
+enabled = true
+hostname = ::       
+port = 6680
+zeroconf = Mopidy HTTP server on $hostname
+csrf_protection = true
+default_app = mopidy
+
+" >> /etc/mopidy/mopidy.conf
+
+    	installifnotinstalledwithpacker mopidy-musicbox
+    	
+    	echo "
+    	
+[musicbox_webclient]
+enabled = true
+musicbox = true 
+on_track_click = PLAY_ALL
+
+" >> /etc/mopidy/mopidy.conf
+	
+	
+	installifnotinstalledwithpacker mopidy-alsamixer
+	echo "Possible error when installing mopidy-alsamixer. Please fix in another terminal and press enter when installed!"
+	read dummy
+    	
+    	echo "
+    	
+[audio]
+mixer = alsamixer
+
+" >> /etc/mopidy/mopidy.conf    	
+    	
+    	
+    	systemctl enable mopidy --now
+    	
+    	;;
+    24)
+    
+    	installifnotinstalledwithpacker pi-hole-server
+    	pacman -S lighttpd php-sqlite php-cgi php-fpm php7-fpm --noconfirm
+    	
+    	sed -i 's/DNSStubListener=yes/DNSStubListener=yes/g' /etc/systemd/resolved.conf
+    	sed -i 's/#DNSStubListener=yes/DNSStubListener=no/g' /etc/systemd/resolved.conf
+    	cp /usr/share/pihole/configs/lighttpd.example.conf /etc/lighttpd/lighttpd.conf
+    	sed -i 's/server.port                 = 80/server.port                 = 81/g' /etc/lighttpd/lighttpd.conf
+        sed -i 's/;extension=pdo_sqlite/extension=pdo_sqlite/g' /etc/php7/php.ini
+        sed -i 's/;extension=sockets/extension=sockets/g' /etc/php7/php.ini
+        sed -i 's/;extension=sqlite3/extension=sqlite3/g' /etc/php7/php.ini
+
+
+    	mkdir -p /etc/systemd/system/php-fpm.service.d
+    	echo "[Service]
+ReadWritePaths = /srv/http/pihole
+ReadWritePaths = /run/pihole-ftl/pihole-FTL.port
+ReadWritePaths = /run/log/pihole/pihole.log
+ReadWritePaths = /run/log/pihole-ftl/pihole-FTL.log
+ReadWritePaths = /etc/pihole
+ReadWritePaths = /etc/hosts
+ReadWritePaths = /etc/hostname
+ReadWritePaths = /etc/dnsmasq.d/
+ReadWritePaths = /proc/meminfo
+ReadWritePaths = /proc/cpuinfo
+ReadWritePaths = /sys/class/thermal/thermal_zone0/temp
+ReadWritePaths = /tmp" >> /etc/systemd/system/php-fpm.service.d/pihole.conf
+
+    	systemctl restart systemd-resolved pihole-FTL
+    	systemctl enable pihole-FTL
+    	systemctl enable lighttpd --now
+    	
+    	
+    	
+    	
+    	    	
+    	;;
+ 
+ 
+ 
+ 
+ 
+    25)
+	installifnotinstalled home-assistant
+	
+	
+ 	;;
+ 	
+    26)
+    
+    	
+    	installifnotinstalled certbot
+    	installifnotinstalled nginx
+    	installifnotinstalled certbot-nginx
+    	mkdir /etc/nginx/ssl
+    	cd /etc/nginx/ssl
+    	openssl req -new -x509 -nodes -newkey rsa:4096 -keyout server.key -out server.crt -days 1095
+    	chmod 400 server.key
+    	chmod 400 server.crt
+    	
+    	servername=$(dialog --title "Nginx" --inputbox "Enter the name of the server (i.e. example.com)" 10 30 --output-fd 1)
+    	
+    	echo "
+worker_processes  1;
+
+
+events {
+    worker_connections  1024;
+}    	
+    http {
+    ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH";
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+
+    # Redirect to HTTPS
+    server {
+        listen 82;
+        server_name ${servername};
+        return 301 https://$host$request_uri;
+    }
+
+
+
+
+}
+" > /etc/nginx/nginx.conf
+
+    	
+ 
+    	
 done
 
 
