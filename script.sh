@@ -782,7 +782,7 @@ ReadWritePaths = /tmp" >> /etc/systemd/system/php-fpm.service.d/pihole.conf
  
  
     25)
-	   installifnotinstalled home-assistant
+	       installifnotinstalled home-assistant
 	
 	
  	      ;;
@@ -790,16 +790,16 @@ ReadWritePaths = /tmp" >> /etc/systemd/system/php-fpm.service.d/pihole.conf
     26)
     
     	
-    	installifnotinstalled certbot
-    	installifnotinstalled nginx
-    	installifnotinstalled certbot-nginx
-    	mkdir /etc/nginx/ssl
-    	cd /etc/nginx/ssl
-    	openssl req -new -x509 -nodes -newkey rsa:4096 -keyout server.key -out server.crt -days 1095
-    	chmod 400 server.key
-    	chmod 400 server.crt
+    	#installifnotinstalled certbot
+    	#installifnotinstalled nginx
+    	#installifnotinstalled certbot-nginx
+    	#mkdir /etc/nginx/ssl
+    	#cd /etc/nginx/ssl
+    	#openssl req -new -x509 -nodes -newkey rsa:4096 -keyout server.key -out server.crt -days 1095
+    	#chmod 400 server.key
+    	#chmod 400 server.crt
     	
-    	servername=$(dialog --title "Nginx" --inputbox "Enter the name of the server (i.e. example.com)" 10 30 --output-fd 1)
+    	#servername=$(dialog --title "Nginx" --inputbox "Enter the name of the server (i.e. example.com)" 10 30 --output-fd 1)
     	
 #    	echo "
 #worker_processes  1;
