@@ -39,6 +39,7 @@ options=(0 "Set up an SD Card for Archlinux" off
     19 "Install Spotweb" off
     20 "set correct timezone (Europe/Amsterdam)" off
     21 "Enable Numlock on boot" off
+    22 "Install JupyterLab" off
 )
 	
     
@@ -57,6 +58,12 @@ checklistchoices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
 #/ Show checklist
 
 # Declare functions
+
+function runasuser() {
+username=$(dialog --inputbox "Enter username to execute $@" 10 30 --output-fd 1)
+        runuser -l $username -c "$@"
+
+}
 
 function installifnotinstalled () {
     if pacman -Qs $1 > /dev/null ; then
@@ -661,30 +668,14 @@ GRANT ALL PRIVILEGES ON spotweb.* TO spotweb@localhost IDENTIFIED BY 'spotweb';"
         installifnotinstalledwithpacker systemd-numlockontty
         systemctl enable numLockOnTty 
         ;;
+    22)
+        installifnotinstalled jupyterlab
+        runasuser "export JUPYTERLAB_DIR=$HOME/.local/share/jupyter/lab"
+        runasuser "jupyter lab build"
+        
+        ;;
     esac
 
 done
 
-
-# #!/bin/bash
-# pacman -S xorg-xprop
-# runuser -l roy -c "packer -S icaclient"
-
-# echo "[Desktop Entry]
-# Name=Citrix ICA client
-# Categories=Network;
-# Exec=/opt/Citrix/ICAClient/wfica
-# Terminal=false
-# Type=Application
-# NoDisplay=true
-# MimeType=application/x-ica;" > /usr/share/applications/wfica.desktop
-
-
-# cd /opt/Citrix/ICAClient/keystore/cacerts/
-# cp /etc/ca-certificates/extracted/tls-ca-bundle.pem .
-# awk 'BEGIN {c=0;} /BEGIN CERT/{c++} { print > "cert." c ".pem"}' < tls.ca-bundle.pem
-
-# openssl rehash /opt/Citrix/ICAClient/keystore/cacerts/
-
-# ln -s /usr/lib/libpcre.so.1 /usr/lib/libpcre.so.3
 
