@@ -826,7 +826,7 @@ events {
 " > /etc/nginx/nginx.conf
 
     	
- 
+ ;;
     	
 done
 
